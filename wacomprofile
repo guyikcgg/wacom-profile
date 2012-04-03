@@ -1,0 +1,134 @@
+#!/bin/bash
+
+DEVICE_STYLUS="Wacom Graphire4 4x5 stylus"
+DEVICE_ERASER="Wacom Graphire4 4x5 eraser"
+DEVICE_CURSOR="Wacom Graphire4 4x5 cursor"
+DEVICE_PAD="Wacom Graphire4 4x5 pad"
+
+##########################
+
+quietFlag=false
+
+function verboseEcho
+{
+    $quietFlag || echo "$1"
+}
+
+function setAutoArea
+{
+    xsetwacom set "$DEVICE_STYLUS" ResetArea
+
+    tabletX=`xsetwacom get "$DEVICE_STYLUS" Area | cut -d\  -f3`
+    tabletY=`xsetwacom get "$DEVICE_STYLUS" Area | cut -d\  -f4`
+    screenX=`xdpyinfo | grep dimension | awk '{print $2}' | cut -dx -f1`
+    screenY=`xdpyinfo | grep dimension | awk '{print $2}' | cut -dx -f2`
+
+    newX=$tabletX
+    newY=$((tabletX * screenY / screenX))
+    if [[ $newY -gt $tabletY ]]; then
+        #height would be greater than max, so reduce width
+        newX=$((tabletY * screenX / screenY))
+        newY=$tabletY
+    fi
+
+    verboseEcho "   * Set aspect ratio automatically, new area is ${newX}x${newY} out of ${tabletX}x${tabletY}"
+
+    xsetwacom set "$DEVICE_STYLUS" Area 0 0 $newX $newY
+    xsetwacom set "$DEVICE_ERASER" Area 0 0 $newX $newY
+}
+
+
+function switchRightMiddleButtons
+{
+    verboseEcho "   * Switch buttons for right and middle click"
+    xsetwacom set "$DEVICE_STYLUS" Button 2 3
+    xsetwacom set "$DEVICE_STYLUS" Button 3 2
+}
+
+function setClickOnTap
+{
+    if [[ ${1} == "false" ]]; then
+        verboseEcho "   * Set click in air"
+        xsetwacom set "$DEVICE_STYLUS" TabletPCButton off
+    else
+        verboseEcho "   * Set click on tap"
+        xsetwacom set "$DEVICE_STYLUS" TabletPCButton on
+    fi
+}
+
+function setAbsoluteMode
+{
+    if [[ ${1} == "false" ]]; then
+        verboseEcho "   * Set mode to relative for all pen inputs"
+        xsetwacom set "$DEVICE_STYLUS" Mode Relative
+        xsetwacom set "$DEVICE_ERASER" Mode Relative
+    else
+        verboseEcho "   * Set mode to absolute for all pen inputs"
+        xsetwacom set "$DEVICE_STYLUS" Mode Absolute
+        xsetwacom set "$DEVICE_ERASER" Mode Absolute
+    fi
+}
+
+function checkDeviceAvailable
+{
+    available=`xsetwacom list devices`
+
+    if [[ -z $available ]]; then
+        verboseEcho "No device found, exit!"
+        exit 1
+    fi
+}
+
+
+##########################
+
+checkDeviceAvailable
+
+profiles=("basic")
+
+count=0
+for value in "$@"; do
+    if [[ $value == "-q" ]]; then
+        quietFlag=true
+    else
+        profiles[$count]=$value
+        ((count++))
+    fi
+done
+
+for profile in "${profiles[@]}"; do
+    verboseEcho "Applying profile \"$profile\":"
+    case $profile in
+        "basic")
+            setAbsoluteMode
+            setAutoArea
+            switchRightMiddleButtons
+            setClickOnTap
+            ;;
+
+        "absolute")
+            setAbsoluteMode
+            ;;
+
+        "relative")
+            setAbsoluteMode false
+            ;;
+
+        "hower")
+            setClickOnTap false
+            ;;
+
+        "nohower")
+            setClickOnTap
+            ;;
+
+        "autoarea")
+            setAutoArea
+            ;;
+
+        *)
+            verboseEcho "   * Unknown profile, nothing changed."
+            ;;
+    esac
+done
+
